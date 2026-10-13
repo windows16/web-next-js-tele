@@ -1,6 +1,11 @@
-import { getAccessToken } from "@/lib/auth";
+import { clearAccessToken, getAccessToken } from "@/lib/auth";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+let apiAccessToken: string | null = null;
+
+export function setApiAccessToken(token: string | null) {
+  apiAccessToken = token;
+}
 
 if (!apiUrl) {
   throw new Error("La variable de entorno NEXT_PUBLIC_API_URL no está definida.");
@@ -15,7 +20,8 @@ export async function apiFetch<T>(
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const accessToken = getAccessToken();
+
+  const accessToken = apiAccessToken ?? getAccessToken();
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
@@ -26,9 +32,15 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 && path !== "/v1/auth/login") {
+      clearAccessToken();
+      setApiAccessToken(null);
+    }
     let message = `La petición falló (${response.status}).`;
     try {
-      const body = (await response.json()) as { message?: string | string[] };
+      const body = (await response.json()) as {
+        message?: string | string[];
+      };
       if (body.message) {
         message = Array.isArray(body.message)
           ? body.message.join(", ")

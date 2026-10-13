@@ -16,7 +16,7 @@ import {
   type LoginResponse,
   setAccessToken,
 } from "@/lib/auth";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, setApiAccessToken } from "@/lib/api";
 
 type AuthContextValue = {
   user: AuthenticatedUser | null;
@@ -39,12 +39,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void Promise.resolve().then(() => {
       const accessToken = getAccessToken();
       if (!accessToken) {
+        setApiAccessToken(null);
         if (isMounted) {
           setIsLoading(false);
         }
         return;
       }
 
+      setApiAccessToken(accessToken);
       return apiFetch<AuthenticatedUser>("/v1/auth/me")
         .then((authenticatedUser) => {
           if (isMounted) {
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {
           clearAccessToken();
+          setApiAccessToken(null);
           if (isMounted) {
             setToken(null);
             setUser(null);
@@ -78,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     setAccessToken(response.access_token, response.expires_in);
+    setApiAccessToken(response.access_token);
     setToken(response.access_token);
     setUser(response.user);
   }, []);
@@ -89,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       clearAccessToken();
+      setApiAccessToken(null);
       setToken(null);
       setUser(null);
     }
