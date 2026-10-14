@@ -1,17 +1,20 @@
-import { apiFetch } from "@/lib/api";
+import apiClient from "@/lib/axios";
 import type { Venta } from "@/types/business";
 
 export const ventasApi = {
-  create: (clienteId: string) =>
-    apiFetch<Venta>("/v1/ventas/base", {
-      method: "POST",
-      body: JSON.stringify({ clienteId }),
-    }),
-  addProduct: (ventaId: string, productoId: string, cantidad: number) =>
-    apiFetch<unknown>(`/v1/ventas/${ventaId}/productos`, {
-      method: "POST",
-      body: JSON.stringify({ productoId, cantidad }),
-    }),
-  getComplete: (ventaId: string) =>
-    apiFetch<Venta>(`/v1/ventas/${ventaId}/total`),
+  create: async (clienteId: string) => {
+    const response = await apiClient.post<Venta>("/v1/ventas/base", { clienteId });
+    return response.data;
+  },
+  addProduct: async (ventaId: string, productoId: string, cantidad: number) => {
+    const response = await apiClient.post<unknown>(`/v1/ventas/${ventaId}/productos`, {
+      productoId,
+      cantidad,
+    });
+    return response.data;
+  },
+  getComplete: async (ventaId: string) => {
+    const response = await apiClient.get<Venta>(`/v1/ventas/${ventaId}/total`);
+    return response.data;
+  },
 };

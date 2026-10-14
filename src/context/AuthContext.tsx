@@ -16,7 +16,7 @@ import {
   type LoginResponse,
   setAccessToken,
 } from "@/lib/auth";
-import { apiFetch, setApiAccessToken } from "@/lib/api";
+import apiClient from "@/lib/axios";
 
 type AuthContextValue = {
   user: AuthenticatedUser | null;
@@ -39,24 +39,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void Promise.resolve().then(() => {
       const accessToken = getAccessToken();
       if (!accessToken) {
-        setApiAccessToken(null);
         if (isMounted) {
           setIsLoading(false);
         }
         return;
       }
 
-      setApiAccessToken(accessToken);
-      return apiFetch<AuthenticatedUser>("/v1/auth/me")
-        .then((authenticatedUser) => {
+      return apiClient
+        .get<AuthenticatedUser>("/v1/auth/me")
+        .then((response) => {
           if (isMounted) {
             setToken(accessToken);
-            setUser(authenticatedUser);
+            setUser(response.data);
           }
         })
         .catch(() => {
           clearAccessToken();
-          setApiAccessToken(null);
           if (isMounted) {
             setToken(null);
             setUser(null);
@@ -75,25 +73,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await apiFetch<LoginResponse>("/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
+    const response = await apiClient.post<LoginResponse>("/v1/auth/login", {
+      email,
+      password,
     });
 
-    setAccessToken(response.access_token, response.expires_in);
-    setApiAccessToken(response.access_token);
-    setToken(response.access_token);
-    setUser(response.user);
+    setAccessToken(response.data.access_token, response.data.expires_in);
+    setToken(response.data.access_token);
+    setUser(response.data.user);
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      await apiFetch<{ mensaje: string }>("/v1/auth/logout", {
-        method: "POST",
-      });
+      await apiClient.post<{ mensaje: string }>("/v1/auth/logout");
     } finally {
       clearAccessToken();
-      setApiAccessToken(null);
       setToken(null);
       setUser(null);
     }
