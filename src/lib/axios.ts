@@ -1,7 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { clearAccessToken, getAccessToken } from "./auth";
+import Cookies from "js-cookie";
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+const ACCESS_TOKEN_COOKIE = "nest_access_token";
+const AUTH_STORAGE_COOKIE = "auth_session";
 
 if (!baseURL) {
   throw new Error("La variable de entorno NEXT_PUBLIC_API_URL no está definida.");
@@ -21,11 +23,25 @@ export const apiClient = axios.create({
 
 /**
  * Interceptor de Peticiones:
- * Inyecta automáticamente el token Bearer si existe en memoria, localStorage o cookies.
+ * Inyecta automáticamente el token Bearer leyéndolo exclusivamente de las Cookies.
  */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = getAccessToken();
+    let token = Cookies.get(ACCESS_TOKEN_COOKIE);
+
+    // Fallback: si no está la cookie directa, extraerla de la cookie del store de Zustand
+    if (!token) {
+      try {
+        const rawStore = Cookies.get(AUTH_STORAGE_COOKIE);
+        if (rawStore) {
+          const parsed = JSON.parse(rawStore);
+          token = parsed?.state?.token;
+        }
+      } catch {
+        // Ignorar error de parsing
+      }
+    }
+
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -45,9 +61,10 @@ apiClient.interceptors.response.use(
       const { status, data } = error.response;
       const url = error.config?.url ?? "";
 
-      // Si el token es inválido o expiró (401) y no es la ruta de login, limpiar sesión
+      // Si el token es inválido o expiró (401) y no es la ruta de login, limpiar cookies de sesión
       if (status === 401 && !url.includes("/v1/auth/login")) {
-        clearAccessToken();
+        Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
+        Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
         if (typeof window !== "undefined" && window.location.pathname !== "/login") {
           window.location.href = "/login";
         }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuthStore } from "@/stores/auth.store";
 import { AppShell, type AppSection } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { clientesApi } from "@/features/clientes/clientes.api";
@@ -12,7 +12,7 @@ import { VentasPanel } from "@/features/ventas/ventas-panel";
 import type { Cliente, Producto } from "@/types/business";
 
 export default function Home() {
-  const { user } = useAuth();
+  const user = useAuthStore((state) => state.user);
   const [section, setSection] = useState<AppSection>("dashboard");
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);

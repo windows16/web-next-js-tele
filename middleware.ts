@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_TOKEN_COOKIE } from "./src/lib/auth";
+import { ACCESS_TOKEN_COOKIE } from "@/stores/auth.store";
 
 export function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });

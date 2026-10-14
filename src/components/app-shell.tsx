@@ -3,7 +3,7 @@
 import { LogOut, Package, ReceiptText, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuthStore } from "@/stores/auth.store";
 import { Button } from "@/components/ui/button";
 
 export type AppSection = "dashboard" | "clientes" | "productos" | "ventas";
@@ -25,7 +25,8 @@ export function AppShell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   async function handleLogout() {
