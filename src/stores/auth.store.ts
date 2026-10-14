@@ -7,10 +7,13 @@ export const ACCESS_TOKEN_COOKIE = "nest_access_token";
 export const REFRESH_TOKEN_COOKIE = "nest_refresh_token";
 export const AUTH_STORAGE_COOKIE = "auth_session";
 
-export type AuthenticatedUser = {
+export type User = {
   id: string;
   email?: string | null;
   [key: string]: unknown;
+}
+export type AuthenticatedUser = {
+  usuario: User
 };
 
 export type LoginResponse = {
@@ -140,7 +143,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           // El interceptor de Axios inyecta el token desde la cookie automáticamente.
           // NO sobreescribir Authorization aquí: causaría enviar el token del estado (viejo).
-          const response = await apiClient.get<AuthenticatedUser>("/v1/auth/me");
+          const response = await apiClient.get<AuthenticatedUser>("/v1/profile");
           set({ user: response.data, token: currentToken, isLoading: false, isHydrated: true });
         } catch {
           // Si el interceptor ya intentó el refresh y falló, clearAccessToken() ya fue llamado.
@@ -173,7 +176,7 @@ export const useAuthStore = create<AuthState>()(
         if (state) {
           // Siempre llamar checkAuth, que ya maneja ambos casos:
           //   • Sin token → setea isLoading:false + isHydrated:true sin hacer petición de red.
-          //   • Con token → valida la sesión contra /v1/auth/me.
+          //   • Con token → valida la sesión contra /v1/profile.
           // NO llamar solo setHydrated(true) sin token: isLoading queda en true (su valor inicial)
           // y AuthGuard se queda atascado en "Verificando sesión..." para siempre.
           void state.checkAuth();

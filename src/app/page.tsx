@@ -31,7 +31,7 @@ export default function Home() {
   return (
     <AppShell activeSection={section} onSectionChange={setSection}>
       {notice && <p className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p>}
-      {section === "dashboard" && <Dashboard userEmail={user?.email} clientes={clientes} productos={productos} />}
+      {section === "dashboard" && <Dashboard userEmail={user?.usuario.email} clientes={clientes} productos={productos} />}
       {section === "clientes" && <ClientesPanel onChange={setClientes} onNotify={setNotice} />}
       {section === "productos" && <ProductosPanel onChange={setProductos} onNotify={setNotice} />}
       {section === "ventas" && <VentasPanel clientes={clientes} productos={productos} onCatalogChanged={loadCatalog} />}

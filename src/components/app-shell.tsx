@@ -49,7 +49,7 @@ export function AppShell({
             <p className="text-xs text-muted-foreground">Operación comercial</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground md:block">{user?.email}</span>
+            <span className="hidden text-sm text-muted-foreground md:block">{user?.usuario.email}</span>
             <Button variant="outline" disabled={isLoggingOut} onClick={() => void handleLogout()}>
               <LogOut />
               Cerrar sesión
