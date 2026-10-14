@@ -2,8 +2,9 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import Cookies from "js-cookie";
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
-const ACCESS_TOKEN_COOKIE = "nest_access_token";
-const AUTH_STORAGE_COOKIE = "auth_session";
+export const ACCESS_TOKEN_COOKIE = "nest_access_token";
+export const REFRESH_TOKEN_COOKIE = "nest_refresh_token";
+export const AUTH_STORAGE_COOKIE = "auth_session";
 
 if (!baseURL) {
   throw new Error("La variable de entorno NEXT_PUBLIC_API_URL no está definida.");
@@ -15,6 +16,7 @@ if (!baseURL) {
 export const apiClient = axios.create({
   baseURL,
   timeout: 15000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -50,27 +52,112 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: unknown) => void;
+  reject: (reason?: unknown) => void;
+}> = [];
+
+function processQueue(error: Error | null, token: string | null = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
+
 /**
  * Interceptor de Respuestas:
- * Centraliza el formateo de errores de NestJS y gestiona la expiración de sesión (401).
+ * Centraliza errores y renueva automáticamente el token en caso de 401 si hay un refresh token.
  */
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ message?: string | string[]; error?: string; statusCode?: number }>) => {
+  async (error: AxiosError<{ message?: string | string[]; error?: string; statusCode?: number }>) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
     if (error.response) {
       const { status, data } = error.response;
-      const url = error.config?.url ?? "";
+      const url = originalRequest?.url ?? "";
+      const isAuthRoute = url.includes("/v1/auth/login") || url.includes("/v1/auth/refresh");
 
-      // Si el token es inválido o expiró (401) y no es la ruta de login, limpiar cookies de sesión
-      if (status === 401 && !url.includes("/v1/auth/login")) {
-        Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
-        Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-          window.location.href = "/login";
+      // Si es 401 y no es login/refresh, intentar renovación silenciosa con refresh token
+      if (status === 401 && !isAuthRoute && !originalRequest._retry) {
+        const refreshToken = Cookies.get(REFRESH_TOKEN_COOKIE);
+
+        if (refreshToken) {
+          if (isRefreshing) {
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                if (originalRequest.headers) {
+                  originalRequest.headers.Authorization = `Bearer ${token}`;
+                }
+                return apiClient(originalRequest);
+              })
+              .catch((err) => Promise.reject(err));
+          }
+
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            const refreshResponse = await axios.post<{
+              access_token: string;
+              refresh_token?: string;
+            }>(`${baseURL}/v1/auth/refresh`, { refreshToken });
+
+            const newAccessToken = refreshResponse.data.access_token;
+            const newRefreshToken = refreshResponse.data.refresh_token;
+
+            Cookies.set(ACCESS_TOKEN_COOKIE, newAccessToken, {
+              expires: 7,
+              path: "/",
+              sameSite: "lax",
+              secure: typeof window !== "undefined" && window.location.protocol === "https:",
+            });
+
+            if (newRefreshToken) {
+              Cookies.set(REFRESH_TOKEN_COOKIE, newRefreshToken, {
+                expires: 30,
+                path: "/",
+                sameSite: "lax",
+                secure: typeof window !== "undefined" && window.location.protocol === "https:",
+              });
+            }
+
+            processQueue(null, newAccessToken);
+
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            }
+            return apiClient(originalRequest);
+          } catch (refreshErr) {
+            processQueue(refreshErr as Error, null);
+            Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
+            Cookies.remove(REFRESH_TOKEN_COOKIE, { path: "/" });
+            Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
+            if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+              window.location.href = "/login";
+            }
+            return Promise.reject(refreshErr);
+          } finally {
+            isRefreshing = false;
+          }
+        } else {
+          // No hay refresh token disponible
+          Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
+          Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
+          if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
         }
       }
 
-      // Extraer mensaje amigable de la respuesta de NestJS
+      // Extraer mensaje amigable de NestJS
       let message = `Error en el servidor (${status})`;
       if (data?.message) {
         message = Array.isArray(data.message) ? data.message.join(", ") : data.message;

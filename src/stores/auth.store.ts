@@ -4,6 +4,7 @@ import Cookies from "js-cookie";
 import apiClient from "@/lib/axios";
 
 export const ACCESS_TOKEN_COOKIE = "nest_access_token";
+export const REFRESH_TOKEN_COOKIE = "nest_refresh_token";
 export const AUTH_STORAGE_COOKIE = "auth_session";
 
 export type AuthenticatedUser = {
@@ -14,6 +15,7 @@ export type AuthenticatedUser = {
 
 export type LoginResponse = {
   access_token: string;
+  refresh_token?: string;
   expires_in: number;
   user: AuthenticatedUser;
 };
@@ -50,6 +52,7 @@ export function getAccessToken(): string | null {
  */
 export function clearAccessToken(): void {
   Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
+  Cookies.remove(REFRESH_TOKEN_COOKIE, { path: "/" });
   Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
 }
 
@@ -81,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
             password,
           });
 
-          const { access_token, user } = response.data;
+          const { access_token, refresh_token, user } = response.data;
 
           // Guardar cookie específica del token para Axios
           Cookies.set(ACCESS_TOKEN_COOKIE, access_token, {
@@ -90,6 +93,15 @@ export const useAuthStore = create<AuthState>()(
             sameSite: "lax",
             secure: typeof window !== "undefined" && window.location.protocol === "https:",
           });
+
+          if (refresh_token) {
+            Cookies.set(REFRESH_TOKEN_COOKIE, refresh_token, {
+              expires: 30,
+              path: "/",
+              sameSite: "lax",
+              secure: typeof window !== "undefined" && window.location.protocol === "https:",
+            });
+          }
 
           set({ token: access_token, user, isLoading: false });
         } catch (error) {
