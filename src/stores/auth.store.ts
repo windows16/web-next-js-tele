@@ -41,7 +41,7 @@ export const cookieStorage: StateStorage = {
 };
 
 /**
- * Obtiene el token actual directamente desde las cookies.
+ * Obtiene el token actual directamente desde las cookies (fuente de verdad).
  */
 export function getAccessToken(): string | null {
   return Cookies.get(ACCESS_TOKEN_COOKIE) ?? null;
@@ -86,7 +86,7 @@ export const useAuthStore = create<AuthState>()(
 
           const { access_token, refresh_token, user } = response.data;
 
-          // Guardar cookie específica del token para Axios
+          // Guardar cookie específica del token para que el interceptor de Axios la lea
           Cookies.set(ACCESS_TOKEN_COOKIE, access_token, {
             expires: 7,
             path: "/",
@@ -122,29 +122,49 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkAuth: async () => {
-        const currentToken = get().token || getAccessToken();
+        // La cookie nest_access_token es la fuente de verdad.
+        // Leer primero desde la cookie; el estado de Zustand puede estar desactualizado.
+        const currentToken = getAccessToken() || get().token;
+
         if (!currentToken) {
           set({ user: null, token: null, isLoading: false, isHydrated: true });
           return;
         }
 
+        // Sincronizar el estado de Zustand si la cookie tiene un token más reciente
+        if (get().token !== currentToken) {
+          set({ token: currentToken });
+        }
+
         set({ isLoading: true });
         try {
-          const response = await apiClient.get<AuthenticatedUser>("/v1/auth/me", {
-            headers: {
-              Authorization: `Bearer ${currentToken}`,
-            },
-          });
+          // El interceptor de Axios inyecta el token desde la cookie automáticamente.
+          // NO sobreescribir Authorization aquí: causaría enviar el token del estado (viejo).
+          const response = await apiClient.get<AuthenticatedUser>("/v1/auth/me");
           set({ user: response.data, token: currentToken, isLoading: false, isHydrated: true });
         } catch {
-          clearAccessToken();
-          set({ user: null, token: null, isLoading: false, isHydrated: true });
+          // Si el interceptor ya intentó el refresh y falló, clearAccessToken() ya fue llamado.
+          // Si aún queda refresh token, el interceptor lo renueva y reintenta; no limpiar aquí.
+          const refreshTokenAun = Cookies.get(REFRESH_TOKEN_COOKIE);
+          if (!refreshTokenAun) {
+            clearAccessToken();
+            set({ user: null, token: null, isLoading: false, isHydrated: true });
+          } else {
+            // El interceptor puede haber renovado el token; actualizar estado
+            const refreshedToken = getAccessToken();
+            if (refreshedToken) {
+              set({ token: refreshedToken, isLoading: false, isHydrated: true });
+            } else {
+              set({ isLoading: false, isHydrated: true });
+            }
+          }
         }
       },
     }),
     {
       name: AUTH_STORAGE_COOKIE,
       storage: createJSONStorage(() => cookieStorage),
+      // Solo persistir token y user; isLoading e isHydrated son siempre efímeros
       partialize: (state) => ({
         token: state.token,
         user: state.user,
@@ -152,7 +172,13 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.setHydrated(true);
-          void state.checkAuth();
+          // Solo verificar sesión si hay un token en cookie (evitar petición /me innecesaria)
+          const tokenEnCookie = Cookies.get(ACCESS_TOKEN_COOKIE);
+          if (tokenEnCookie) {
+            void state.checkAuth();
+          } else {
+            state.setHydrated(true);
+          }
         }
       },
     },

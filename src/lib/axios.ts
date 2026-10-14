@@ -26,18 +26,20 @@ export const apiClient = axios.create({
 /**
  * Interceptor de Peticiones:
  * Inyecta automáticamente el token Bearer leyéndolo exclusivamente de las Cookies.
+ * La cookie nest_access_token es la fuente de verdad; el store de Zustand es secundario.
  */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // 1. Leer desde la cookie directa (fuente principal)
     let token = Cookies.get(ACCESS_TOKEN_COOKIE);
 
-    // Fallback: si no está la cookie directa, extraerla de la cookie del store de Zustand
+    // 2. Fallback: extraer desde la cookie del store de Zustand
     if (!token) {
       try {
         const rawStore = Cookies.get(AUTH_STORAGE_COOKIE);
         if (rawStore) {
-          const parsed = JSON.parse(rawStore);
-          token = parsed?.state?.token;
+          const parsed = JSON.parse(rawStore) as { state?: { token?: string } };
+          token = parsed?.state?.token ?? undefined;
         }
       } catch {
         // Ignorar error de parsing
@@ -105,10 +107,12 @@ apiClient.interceptors.response.use(
           isRefreshing = true;
 
           try {
-            const refreshResponse = await axios.post<{
+            // IMPORTANTE: usar apiClient (con withCredentials) en vez de axios bare,
+            // para que las cookies sean enviadas correctamente al endpoint de refresh.
+            const refreshResponse = await apiClient.post<{
               access_token: string;
               refresh_token?: string;
-            }>(`${baseURL}/v1/auth/refresh`, { refreshToken });
+            }>("/v1/auth/refresh", { refreshToken });
 
             const newAccessToken = refreshResponse.data.access_token;
             const newRefreshToken = refreshResponse.data.refresh_token;
@@ -148,7 +152,7 @@ apiClient.interceptors.response.use(
             isRefreshing = false;
           }
         } else {
-          // No hay refresh token disponible
+          // No hay refresh token disponible → redirigir a login
           Cookies.remove(ACCESS_TOKEN_COOKIE, { path: "/" });
           Cookies.remove(AUTH_STORAGE_COOKIE, { path: "/" });
           if (typeof window !== "undefined" && window.location.pathname !== "/login") {
