@@ -171,14 +171,12 @@ export const useAuthStore = create<AuthState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.setHydrated(true);
-          // Solo verificar sesión si hay un token en cookie (evitar petición /me innecesaria)
-          const tokenEnCookie = Cookies.get(ACCESS_TOKEN_COOKIE);
-          if (tokenEnCookie) {
-            void state.checkAuth();
-          } else {
-            state.setHydrated(true);
-          }
+          // Siempre llamar checkAuth, que ya maneja ambos casos:
+          //   • Sin token → setea isLoading:false + isHydrated:true sin hacer petición de red.
+          //   • Con token → valida la sesión contra /v1/auth/me.
+          // NO llamar solo setHydrated(true) sin token: isLoading queda en true (su valor inicial)
+          // y AuthGuard se queda atascado en "Verificando sesión..." para siempre.
+          void state.checkAuth();
         }
       },
     },
